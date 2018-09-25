@@ -1,0 +1,699 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Home Page</title>
+    <script type='text/javascript'>
+
+
+        function fold(f, acc, arr) {
+            //left fold, but done imperatively
+            for (var i = 0; i < arr.length; i++) {
+                x = arr[i];
+                acc = f(x,acc);
+            }
+            return acc
+        }
+
+        function map(f,arr) {
+            arr.forEach(function (x,i,arr) { return f(x)});
+            return arr;
+        }
+
+        function foldMut(f, acc, arr) {
+            //left fold where acc is mutable
+            for (var i = 0; i < arr.length; i++) {
+                f(arr[i],acc);
+            };
+        }
+
+        function requestUrl(info) {
+            return fold(function(x, acc) {return acc.concat("/").concat(encodeURIComponent(x.toString()));}, "http://localhost:8080", info );
+        }
+
+        function httpGetAsync(theUrl, callback) {
+            var xmlHttp = new XMLHttpRequest();
+            xmlHttp.onreadystatechange = function() {
+                if (xmlHttp.readyState == 4 && xmlHttp.status == 200) {
+                    var data = JSON.parse(xmlHttp.responseText)
+                    callback(data);
+                }
+            };
+            xmlHttp.open("GET", theUrl, true);
+            xmlHttp.send(null)
+        };
+
+        function mkRequest(arr, callback) {
+            httpGetAsync(requestUrl(arr), callback);
+        }
+
+        function getData(callback) {
+            mkRequest([],callback);
+        }
+
+        //todo api calls
+        function newTodo(title, callback) {
+            mkRequest(["TODO","new", title], callback)
+        }
+
+        function deleteTodo(n, callback) {
+            mkRequest(["TODO","delete",n], callback)
+        }
+
+        function removeItem(n, item, callback) {
+            mkRequest(["TODO","remove", n, item], callback);
+        }
+
+        function addItem(n, item, callback) {
+            mkRequest(["TODO","add", n, item], callback);
+        }
+
+        function addNote(n,item,note,callback) {
+            mkRequest(["TODO",'noteAdd',n,item,note],callback);
+        }
+
+        function removeNote(n,item,note,callback) {
+            mkRequest(["TODO",'noteRemove',n,item,note],callback);
+        }
+
+        //notes api calls
+        function newNote(title,callback) {
+            mkRequest(["NOTE","new",title], callback);
+        }
+
+        function deleteNote(n, callback) {
+            mkRequest(["NOTE","delete",n], callback);
+        }
+
+        function saveNote(n, content, callback) {
+            mkRequest(["NOTE","save",n,content], callback);
+        }
+
+        function clearElement(elem) {
+            // remove the child nodes
+            while (elem.firstChild) {
+                elem.removeChild(elem.firstChild);
+            }
+        }
+
+        function print(x) {
+            console.log(x.toString());
+        }
+
+        /*
+        So now the goal is to recieve the json and split into the proper groups
+            todos and selected todo
+            notes and selected note
+        */
+
+        function showTodo(todos) {
+            var dropdown = document.getElementById('todo_selector');
+            index = dropdown.options[dropdown.selectedIndex].value;
+
+            var display = document.getElementById('display');
+            clearElement(display);
+            display.appendChild(todos[index]);
+        }
+
+        function makeNotesInfo(selected, json) {
+            //expects selected index for dropdown and display, and the json for the notes
+
+            var dropdown = document.createElement('select');
+            dropdown.setAttribute('id', 'note_selector');
+
+            res = fold(
+                function(note, acc) {
+                    dropdown = acc[0];
+                    notes = acc[1];
+
+                    index = note[0];
+                    note_info = note[1];
+                    title = note_info['elemIdentity'];
+                    content = note_info['elemInfo'];
+
+                    var opt = document.createElement('option');
+                    opt.textContent = title;
+                    opt.value = notes.length;
+                    dropdown.appendChild(opt);
+
+                    note_html = render_note(index, title, content);
+                    notes.push(note_html);
+
+                    return [dropdown, notes];
+                },
+                [dropdown, []],
+                json
+            );
+
+            dropdown = res[0];
+            notes = res[1];
+
+            dropdown.selectedIndex = selected;
+
+            var info = {selected: selected, notes: notes, dropdown: dropdown};
+            return info;
+        }
+
+        function makeTodosInfo(selected, json) {
+            //expects the selected index for the dropdown/dispaly and the json for the todos
+            //creates an object with the relevant html
+
+            var dropdown = document.createElement('select');
+            dropdown.setAttribute('id', 'todo_selector');
+
+            res = fold(
+                function (todo, acc) {
+                    dropdown = acc[0];
+                    todos = acc[1];
+
+                    index = todo[0];
+                    todo_body = todo[1];
+                    title = todo_body['elemIdentity'];
+                    items = todo_body['elemInfo'];
+
+                    var opt = document.createElement("option");
+                    opt.textContent = title;
+                    opt.value = todos.length;
+                    dropdown.appendChild(opt);
+
+                    todo_html = render_todo(index, title, items);
+                    todos.push(todo_html);
+
+                    return [dropdown,todos];
+                },
+                [dropdown, []],
+                json
+            );
+
+            dropdown = res[0];
+            todos = res[1];
+
+            dropdown.selectedIndex = selected;
+
+            var info = {selected: selected, todos: todos, dropdown: dropdown};
+            return info
+        }
+
+        function displayNoteInfo(info) {
+            //place the info into the correct locations on the page
+            var selected = info['selected'];
+            var dropdown = info['dropdown'];
+            var notes = info['notes'];
+
+            dropdown.addEventListener("change", function(){updateSelectNote(info)}); //kinda dorky doing it here
+
+            //put dropdown in dropdown element
+            var drop_cell = document.getElementById('dropdown_note');
+            clearElement(drop_cell);
+            drop_cell.appendChild(dropdown);
+
+            //put the selected todo into display
+            var display = document.getElementById('display_note');
+            clearElement(display);
+            display.appendChild(notes[selected]);
+
+            //document.getElementById('add_item').focus();
+        }
+
+        function displayTodoInfo(info) {
+            //place the info into the correct locations on the page
+            //make the dropdown
+            //place the todo into the right location
+            var selected = info['selected'];
+            var dropdown = info['dropdown'];
+            var todos = info['todos'];
+
+
+            dropdown.addEventListener("change", function(){updateSelectTodo(info)}); //kinda dorky doing it here
+
+            //put dropdown in dropdown element
+            var drop_cell = document.getElementById('dropdown_todo');
+            clearElement(drop_cell);
+            drop_cell.appendChild(dropdown);
+
+            //put the selected todo into display
+            var display = document.getElementById('display_todo');
+            clearElement(display);
+            display.appendChild(todos[selected]);
+
+            document.getElementById('add_item').focus();
+        }
+
+        function updateDisplayNote(selected, json) {
+            info = makeNotesInfo(selected, json['collectNotes']);
+            displayNoteInfo(info);
+        }
+
+        function updateDisplayTodo(selected, json) {
+            info = makeTodosInfo(selected, json['collectTodos']);
+            displayTodoInfo(info);
+        }
+
+        function updateDisplay(selected, json) {
+            //given the selected item and the received json from the server, update the display
+            updateDisplayTodo(selected[0],json);
+            updateDisplayNote(selected[1],json);
+            //return info;
+        }
+
+        /*
+        The possible updates are:
+            making a new selection
+                change the selection index
+                no request
+            making new todo
+                send request
+                change selection to the new todo
+            adding item to todo
+                send request
+                maintain selection
+            remove item from todo
+                send request
+                maintain selection
+            delete todo
+                send request
+                change selection to index one less
+        */
+
+        function updateSelectTodo(info) {
+            //grab the value in the dropdown
+            var dropdown = document.getElementById('todo_selector');
+            index = dropdown.options[dropdown.selectedIndex].value;
+            info['selected'] = index;
+            displayTodoInfo(info);
+            return info;
+        }
+
+        function updateSelectNote(info) {
+            //grab the value in the dropdown
+            var dropdown = document.getElementById('note_selector');
+            index = dropdown.options[dropdown.selectedIndex].value;
+            info['selected'] = index;
+            displayNoteInfo(info);
+            return info;
+        }
+
+        function updateNewTodo() {
+            var new_todo = document.getElementById('new_todo');
+            title = new_todo.value;
+            new_todo.value = '';
+            var dropdown = document.getElementById('todo_selector');
+            index = dropdown.options.length;
+            newTodo(title, function(json) {updateDisplayTodo(index, json)});
+        }
+
+        function updateNewNote() {
+            var new_todo = document.getElementById('new_note');
+            title = new_todo.value;
+            new_todo.value = '';
+            var dropdown = document.getElementById('note_selector');
+            index = dropdown.options.length;
+            newNote(title, function(json) {updateDisplayNote(index, json)});
+        }
+
+        function updateSaveNote(index) {
+            var dropdown = document.getElementById('note_selector');
+            select = dropdown.options[dropdown.selectedIndex].value;
+            content = document.getElementById('note_text').value;
+            saveNote(index, content, function(json) {updateDisplayNote(select, json)});
+        }
+
+        function updateAddTodo(index) {
+            var input_id = "add_item";
+            var item = document.getElementById(input_id).value
+            if (item != '') {
+                var dropdown = document.getElementById('todo_selector');
+                select = dropdown.options[dropdown.selectedIndex].value;
+
+                addItem(index, item, function(json) {updateDisplayTodo(select, json)});
+            };
+        }
+
+        function updateRemove(index, item) {
+            var dropdown = document.getElementById('todo_selector');
+            select = dropdown.options[dropdown.selectedIndex].value;
+            removeItem(index, item, function(json) {updateDisplayTodo(select, json)});
+        }
+
+        function updateDeleteNote(index) {
+            var dropdown = document.getElementById('note_selector');
+            select = dropdown.options[dropdown.selectedIndex].value;
+            select = select-1;
+            if (select < 0) {
+                select = 0;
+            }
+            deleteNote(index, function(json) {updateDisplayNote(select, json)});
+        }
+
+        function updateDeleteTodo(index) {
+            var dropdown = document.getElementById('todo_selector');
+            select = dropdown.options[dropdown.selectedIndex].value;
+            select = select-1;
+            if (select < 0) {
+                select = 0;
+            }
+            deleteTodo(index, function(json) {updateDisplayTodo(select, json)});
+        }
+
+        function updateNoteAdd(index,item,note) {
+            var dropdown = document.getElementById('todo_selector');
+            select = dropdown.options[dropdown.selectedIndex].value;
+
+            addNote(index,item,note, function(json) {updateDisplayTodo(select,json)});
+        }
+
+        function updateNoteRemove(index,item,note) {
+            var dropdown = document.getElementById('todo_selector');
+            select = dropdown.options[dropdown.selectedIndex].value;
+
+            removeNote(index,item,note, function(json) {updateDisplayTodo(select,json)});
+        }
+
+
+        function onEnter(ev, func) {
+            if (ev.key === 'Enter') {
+                func();
+            }
+        }
+
+        function setupNotes() {
+            //create the html to fill in the body
+            var MAIN = document.getElementById('main');
+            var body = document.createElement('div');
+            body.setAttribute('id','note');
+            body.setAttribute('class','container');
+
+            MAIN.appendChild(body);
+
+            var main = document.createElement('table');
+            var top = document.createElement('tr');
+            var new_todo = document.createElement('td');
+            var new_input = document.createElement('input');
+            new_input.setAttribute('id','new_note');
+            new_input.setAttribute('placeholder','New Note');
+            new_input.addEventListener('keyup', function(ev){ onEnter(ev,updateNewNote)});
+            new_todo.appendChild(new_input);
+
+            var drop_cell = document.createElement('td');
+            drop_cell.setAttribute('id','dropdown_note');
+            top.appendChild(new_todo);
+            top.appendChild(drop_cell);
+            main.appendChild(top);
+
+            var display_row = document.createElement('tr');
+            var display = document.createElement('td');
+            display.setAttribute('colspan',2);
+            display.setAttribute('id','display_note');
+            display_row.appendChild(display);
+            main.appendChild(display_row)
+
+            body.appendChild(main);
+
+        }
+
+        function setupTodos() {
+            //create the html to fill in the body
+            var MAIN = document.getElementById("main");
+            var body = document.createElement('div');
+            body.setAttribute('id','todo');
+            body.setAttribute('class','container');
+
+            MAIN.appendChild(body);
+
+
+            var main = document.createElement('table');
+            var top = document.createElement('tr');
+            var new_todo = document.createElement('td');
+            var new_input = document.createElement('input');
+            new_input.setAttribute('id','new_todo');
+            new_input.setAttribute('placeholder','New Todo');
+            new_input.addEventListener('keyup', function(ev){ onEnter(ev,updateNewTodo)});
+            new_todo.appendChild(new_input);
+
+            var drop_cell = document.createElement('td');
+            drop_cell.setAttribute('id','dropdown_todo');
+            top.appendChild(new_todo);
+            top.appendChild(drop_cell);
+            main.appendChild(top);
+
+            var display_row = document.createElement('tr');
+            var display = document.createElement('td');
+            display.setAttribute('colspan',2);
+            display.setAttribute('id','display_todo');
+            display_row.appendChild(display);
+            main.appendChild(display_row)
+
+            body.appendChild(main);
+
+        }
+
+        function add_note(index, item) {
+            //find the associated note list and append an input
+                //input should be focussed
+                //needs events for losing focus and hitting enter
+
+            var notes = document.getElementById('notes_'.concat(item));
+
+            var input = document.createElement('input');
+            input.setAttribute('id','note_input');
+            input.setAttribute('placeholder','Add Note');
+
+            input.addEventListener('keyup', function(ev){
+                onEnter(ev,function(){
+                    updateNoteAdd(index, item, document.getElementById('note_input').value);
+                })
+            });
+            input.addEventListener('blur', function() {
+                var input = document.getElementById('note_input');
+                input.parentNode.removeChild(input);
+            })
+
+            input_item = document.createElement('li');
+            input_item.appendChild(input);
+            notes.appendChild(input_item);
+            document.getElementById('note_input').focus();
+        }
+
+        function render_notes(index, item, notes) {
+            // given some notes make a bulleted list
+
+            var list = document.createElement('ul');
+            list.setAttribute('class','itemNotes');
+            list.setAttribute('id','notes_'.concat(item)); //for looking it up
+            list = fold(function (note, acc) {
+                var opt = document.createElement('li');
+                var table = document.createElement('table');
+                var row = document.createElement('tr');
+                var text = document.createElement('td');
+                text.textContent = note;
+                var del = document.createElement('td');
+                var del_a = document.createElement('button');
+                del_a.textContent = '-';
+                del_a.addEventListener('click', function(){
+                    updateNoteRemove(index,item,note);
+                })
+                del.appendChild(del_a);
+
+                row.appendChild(del);
+                row.appendChild(text);
+
+                table.appendChild(row);
+                opt.appendChild(table);
+
+                acc.appendChild(opt);
+                return acc
+            },
+            list,
+            notes.reverse());
+
+            return list
+
+        }
+
+        function render_note(index, title, content) {
+            var body = document.createElement('table');
+
+            var title_bar = document.createElement('tr');
+
+            var title_header = document.createElement('th');
+            var head = document.createElement('td');
+            head.textContent = title.concat(": ").concat(index.toString());
+            title_header.appendChild(head);
+            title_bar.appendChild(title_header);
+
+            //the delete button
+            var button_td = document.createElement("td");
+            var remove_button = document.createElement("button");
+            remove_button.setAttribute('class','deleteTodo');
+            remove_button.textContent = "X";
+            remove_button.addEventListener("click", function(){
+                updateDeleteNote(index);
+            });
+            button_td.appendChild(remove_button);
+            title_bar.appendChild(button_td)
+
+            body.appendChild(title_bar);
+
+            var content_row = document.createElement('tr');
+            var content_cell = document.createElement('td');
+            var content_area = document.createElement('textarea');
+            content_area.value = content;
+            content_area.setAttribute('id','note_text');
+            content_cell.appendChild(content_area);
+            content_row.appendChild(content_cell);
+            body.appendChild(content_row);
+
+            var button_row = document.createElement('tr');
+            var button_cell = document.createElement('td');
+            var save_button = document.createElement('button');
+            save_button.textContent = "save";
+            save_button.addEventListener('click', function(){
+                updateSaveNote(index);
+            });
+            button_cell.appendChild(save_button);
+            button_row.appendChild(button_cell);
+            body.appendChild(button_row);
+
+            return body;
+
+        }
+
+        function render_todo(index, title, items) {
+            //render portion of json
+            var todo = document.createElement("table");
+
+            //setup the title area and remove button
+            var title_bar = document.createElement("tr");
+
+            //the title
+            var title_header = document.createElement("th");
+            title_header.setAttribute('colspan',2);
+            var head = document.createElement("td");
+            head.textContent = title.concat(": ").concat(index.toString());
+            title_header.appendChild(head);
+            title_bar.appendChild(title_header);
+
+            //the delete button
+            var button_td = document.createElement("td");
+            var remove_button = document.createElement("button");
+            remove_button.setAttribute('class','deleteTodo');
+            remove_button.textContent = "X";
+            remove_button.addEventListener("click", function(){
+                updateDeleteTodo(index);
+            });
+            button_td.appendChild(remove_button);
+            title_bar.appendChild(button_td)
+
+            todo.appendChild(title_bar);
+
+            //the individual items
+            foldMut(function (item, todo){
+                //the section
+
+                var first_row = document.createElement('tr');
+                var elem_name = document.createElement('td');
+                var elem_add = document.createElement('td');
+                var elem_delete = document.createElement('td');
+
+                var add_button = document.createElement('button');
+                add_button.textContent = "+";
+                add_button.addEventListener('click', function() {
+                    add_note(index, item['itemName']);
+                })
+
+                var del_button = document.createElement('button');
+                del_button.textContent = "x";
+                del_button.addEventListener('click', function(){
+                    updateRemove(index, item['itemName']);
+                });
+
+                elem_add.appendChild(add_button);
+                elem_delete.appendChild(del_button);
+
+                elem_name.textContent = item['itemName'];
+                first_row.appendChild(elem_name);
+                first_row.appendChild(elem_add);
+                first_row.appendChild(elem_delete);
+
+                second_row = document.createElement('tr');
+                if (true) {
+                    var elem_notes = render_notes(index, item['itemName'], item['itemNotes']);
+                    second_row.appendChild(elem_notes);
+                }
+
+                todo.appendChild(first_row);
+                todo.appendChild(second_row);
+
+                },
+                todo,
+                items.reverse()
+            );
+
+            //adding an item
+            var add_row = document.createElement('tr');
+            var add_cell = document.createElement('td');
+            add_cell.setAttribute('colspan',2);
+            var add_input = document.createElement('input');
+            var input_id = "add_item";
+            add_input.setAttribute('id', input_id);
+            add_input.setAttribute('placeholder','Add Item');
+            add_input.addEventListener('keyup', function(ev){ onEnter(ev, function(){updateAddTodo(index)})});
+
+            add_cell.appendChild(add_input);
+            add_row.appendChild(add_cell);
+            todo.appendChild(add_row);
+
+
+            return todo
+        }
+
+        function initialize() {
+            setupTodos();
+            setupNotes();
+            getData(function(json) {updateDisplay([0,0],json)});
+        };
+
+    </script>
+
+    <style>
+        button {
+            padding-left: 5px;
+            padding-right: 5px;
+            padding-top: 2px;
+            padding-bottom: 2px;
+            margin: 0 0 0 0;
+            border-left-width: 2px;
+            border-right-width: 2px;
+            border-top-width: 2px;
+            border-bottom-width: 2px;
+            border-style: solid;
+            border-color: black;
+            border-radius: 30%;
+        }
+        .deleteTodo {
+            background-color: red;
+        }
+
+        .itemNotes {
+            list-style: none;
+            padding-left: 10px;
+            margin: 0 0 0 0;
+        }
+
+        .container {
+            display: inline-block;
+            vertical-align: top;
+        }
+
+        .container textarea {
+            box-sizing: border-box; /* fit parent width */
+            height: 100%;
+        }
+
+    </style>
+</head>
+<body onload=initialize()>
+    <div id="main">
+    </div>
+</body>
+
+</html>
